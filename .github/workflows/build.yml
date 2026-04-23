@@ -1,0 +1,31 @@
+name: Build Android APK
+on:
+  workflow_dispatch: # Позволяет запускать сборку кнопкой
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: ⚙️ Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 🏗 Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 📦 Install dependencies
+        run: npm install
+
+      - name: 🚀 Build APK (Local mode)
+        run: npx eas build --profile preview --platform android --local --non-interactive
