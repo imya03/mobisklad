@@ -29,3 +29,5 @@ jobs:
 
       - name: 🚀 Build APK (Local mode)
         run: npx eas build --profile preview --platform android --local --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
