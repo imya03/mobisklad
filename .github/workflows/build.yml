@@ -1,6 +1,6 @@
 name: Build Android APK
 on:
-  workflow_dispatch: # Позволяет запускать сборку кнопкой
+  workflow_dispatch:
 
 jobs:
   build:
@@ -31,3 +31,10 @@ jobs:
         run: npx eas build --profile preview --platform android --local --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📁 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobisklad-app
+          # Этот путь универсален для локальной сборки EAS
+          path: ./*.apk
