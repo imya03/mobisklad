@@ -3,21 +3,36 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dbPromise } from '../db/database';
 import { Product } from '../types/index';
 import { Paths, File } from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
 
 // --- КОНСТАНТЫ ---
-export const MS_TOKEN = '690dfa0dc536cbb7209313c1933c3cd016a2dc11';
-const STORE_ID = 'd76a21bf-652e-11ef-0a80-002700121651';
-const ORGANIZATION_ID = 'd763db4c-652e-11ef-0a80-00270012164d';
 export const BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
+
+export const getMSConfig = async () => {
+  const token = await SecureStore.getItemAsync('user_api_key');
+  const storeId = await SecureStore.getItemAsync('store_id');
+  const orgId = await SecureStore.getItemAsync('org_id');
+
+  return {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    storeId,
+    orgId
+  };
+};
+let cachedConfig: any = null;
+
+export const getConfig = async () => {
+  if (cachedConfig) return cachedConfig;
+  cachedConfig = await getMSConfig();
+  return cachedConfig;
+};
 const LAST_SYNC_KEY = 'last_moysklad_sync';
 
 let isDbLockedBySync = false;
 
-export const authHeader = {
-  'Authorization': `Bearer ${MS_TOKEN}`,
-  'Accept-Encoding': 'gzip',
-  'Content-Type': 'application/json'
-};
 
 // --- ТИПЫ ---
 export type SyncProgress = {
@@ -45,6 +60,7 @@ const fetchParallel = async (
   onBatch: (rows: any[]) => Promise<void>
 ) => {
   const CONCURRENCY = 5; // Оптимально для МойСклад (3-5)
+  const config = await getConfig();
   for (let offset = 0; offset < total; offset += limit * CONCURRENCY) {
     const promises = [];
     for (let i = 0; i < CONCURRENCY; i++) {
@@ -53,7 +69,7 @@ const fetchParallel = async (
 
       promises.push(
         axios.get(`${BASE_URL}/${endpoint}`, {
-          headers: authHeader,
+          headers: config.headers,
           params: { ...params, limit, offset: currentOffset }
         })
       );
@@ -79,8 +95,8 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     // --- 1. ОСТАТКИ (ПАРАЛЛЕЛЬНО) ---
     if (onProgress) onProgress({ step: 'Загрузка остатков...', count: 0 });
     const allStocks = new Map<string, number>();
-
-    const stockInit = await axios.get(`${BASE_URL}/report/stock/all?limit=1`, { headers: authHeader });
+    const config = await getConfig();
+    const stockInit = await axios.get(`${BASE_URL}/report/stock/all?limit=1`, { headers: config.headers });
     const totalStocks = stockInit.data.meta.size;
 
     await fetchParallel('report/stock/all', totalStocks, 1000, { t: Date.now() }, async (rows) => {
@@ -103,7 +119,7 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     let cOffset = 0;
     while (true) {
       const filter = lastSync ? `&filter=updated>=${encodeURIComponent(lastSync)}` : '';
-      const res = await axios.get(`${BASE_URL}/entity/productfolder?limit=1000&offset=${cOffset}${filter}`, { headers: authHeader });
+      const res = await axios.get(`${BASE_URL}/entity/productfolder?limit=1000&offset=${cOffset}${filter}`, { headers: config.headers });
       const rows = res.data.rows || [];
       await db.withTransactionAsync(async () => {
         for (const cat of rows) {
@@ -133,7 +149,7 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     };
 
     const prodInit = await axios.get(`${BASE_URL}/entity/product`, {
-      headers: authHeader,
+      headers: config.headers,
       params: { ...productParams, limit: 1 }
     });
     const totalProducts = prodInit.data.meta.size;
@@ -178,7 +194,7 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     // --- 4. АУДИТ УДАЛЕНИЙ
     if (lastSync) {
       const auditFilter = encodeURIComponent(`entityType=product;eventType=delete;moment>=${lastSync}`);
-      const auditRes = await axios.get(`${BASE_URL}/audit?filter=${auditFilter}`, { headers: authHeader });
+      const auditRes = await axios.get(`${BASE_URL}/audit?filter=${auditFilter}`, { headers: config.headers });
       const auditRows = auditRes.data.rows || [];
       for (const a of auditRows) {
         const deletedId = a.objectHref?.split('/').pop()?.split('?')[0];
@@ -218,7 +234,10 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
 /**
  * Поштучная загрузка изображений
  */
-export const syncAllImagesOneByOne = async (onProgress?: (current: number, total: number) => void) => {
+export const syncAllImagesOneByOne = async (
+  onProgress?: (current: number, total: number, message: string) => void,
+  signal?: AbortSignal
+) => {
   const db = await dbPromise;
 
   // 1. Берем товары, у которых нет локальной картинки. 
@@ -236,15 +255,18 @@ export const syncAllImagesOneByOne = async (onProgress?: (current: number, total
   }
 
   for (let i = 0; i < globalTotal; i++) {
+    if (signal?.aborted) return;
     const p = productsToSync[i];
     const art = p.article || 'Без артикула';
     let status = "";
 
     try {
       // ШАГ А: Запрос ссылки
+      const config = await getConfig();
       const res = await axios.get(`${BASE_URL}/entity/product/${p.id}/images`, {
-        headers: authHeader,
-        params: { fields: 'downloadPermanentHref' }
+        headers: config.headers,
+        params: { fields: 'downloadPermanentHref' },
+        signal: signal
       });
 
       const permUrl = res.data.rows?.[0]?.meta?.downloadPermanentHref;
@@ -264,10 +286,11 @@ export const syncAllImagesOneByOne = async (onProgress?: (current: number, total
         status = "✅ ЗАГРУЖЕНО";
       } else {
         await db.runAsync("UPDATE products SET local_image_uri = 'no_image' WHERE id = ?", [p.id]);
-        status = "❌ ФОТО ОТСУТСТВУЕТ (В МС)";
+        status = "❌";
       }
 
     } catch (e: any) {
+      if (axios.isCancel(e)) break;
       if (e.response?.status === 429) {
         console.log("⏳ Лимит API (429). Пауза 5 сек...");
         await new Promise(r => setTimeout(r, 5000));
@@ -282,7 +305,8 @@ export const syncAllImagesOneByOne = async (onProgress?: (current: number, total
 
     // Обновление прогресс-бара в UI
     if (onProgress) {
-      onProgress(i + 1, globalTotal);
+      const artStatus = `Арт: ${art} — ${status}`
+      onProgress(i + 1, globalTotal, artStatus);
     }
 
     // Небольшая пауза, чтобы не забивать поток
@@ -305,15 +329,15 @@ export const createOrderInMoySklad = async (clientId: string, cart: Record<strin
       assortment: { meta: { href: `${BASE_URL}/entity/product/${id}`, type: 'product', mediaType: 'application/json' } }
     };
   });
-
+  const config = await getConfig();
   const body = {
-    organization: { meta: { href: `${BASE_URL}/entity/organization/${ORGANIZATION_ID}`, type: 'organization', mediaType: 'application/json' } },
+    organization: { meta: { href: `${BASE_URL}/entity/organization/${config.orgId}`, type: 'organization', mediaType: 'application/json' } },
     agent: { meta: { href: `${BASE_URL}/entity/counterparty/${clientId}`, type: 'counterparty', mediaType: 'application/json' } },
-    store: { meta: { href: `${BASE_URL}/entity/store/${STORE_ID}`, type: 'store', mediaType: 'application/json' } },
+    store: { meta: { href: `${BASE_URL}/entity/store/${config.storeId}`, type: 'store', mediaType: 'application/json' } },
     positions
   };
 
-  const response = await axios.post(`${BASE_URL}/entity/customerorder`, body, { headers: authHeader });
+  const response = await axios.post(`${BASE_URL}/entity/customerorder`, body, { headers: config.headers });
   return response.data;
 };
 
@@ -332,8 +356,8 @@ export const syncClients = async () => { // Проверь наличие сло
 
     // Используем /entity/counterparty
     const url = `${BASE_URL}/entity/counterparty?limit=1000&expand=accounts`;
-
-    const res = await axios.get(url, { headers: authHeader });
+    const config = await getConfig();
+    const res = await axios.get(url, { headers: config.headers });
     const rows = res.data.rows || [];
 
     await db.withTransactionAsync(async () => {
@@ -371,8 +395,10 @@ export const syncClientHistory = async (clientId: string) => {
   ];
 
   try {
+    const config = await getConfig();
     // 1. Загружаем только списки документов (без expand позиций)
     const results = await Promise.all(
+
       types.map(item => {
         const url = `${BASE_URL}/entity/${item.endpoint}`;
         // Фильтруем документы только по конкретному контрагенту
@@ -381,7 +407,7 @@ export const syncClientHistory = async (clientId: string) => {
         const finalUrl = `${url}?${filter}`;
         console.log(`📡 Загрузка списка для ${item.table}...`);
 
-        return axios.get(finalUrl, { headers: authHeader });
+        return axios.get(finalUrl, { headers: config.headers });
       })
     );
 

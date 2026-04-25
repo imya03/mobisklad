@@ -8,6 +8,8 @@ import { Product, Category } from '../types';
 import { syncChangesOnly, syncClients, syncAllImagesOneByOne } from '../services/syncService';
 import { useCatalogLogic } from '../hooks/useCatalogLogic';
 import { ProductDetailModal } from '../components/ProductDetailModal';
+import { BackHandler } from 'react-native';
+
 
 const ITEM_HEIGHT = 56;
 
@@ -117,6 +119,38 @@ export const CatalogScreen = memo(({ products, categories, cart, onUpdateCart, e
     }
   }, [logic.activeFolderId, lastScrollOffset]);
 
+
+  useEffect(() => {
+          const backAction = () => {
+              // 1. Если открыты детали заказа
+              if (selectedProduct) {
+                  setSelectedProduct(null);
+                  return true; // "true" значит, что мы сами обработали нажатие
+              }
+
+              if (logic.activeFolderId) {
+                  logic.setActiveFolderId(null);
+                  shouldRestoreScroll.current = true;
+                  return true; // "true" значит, что мы сами обработали нажатие
+              }
+              
+  
+              // Если мы и так на главном экране (clients), возвращаем false.
+              // Приложение закроется как обычно.
+              return false;
+          };
+  
+          const backHandler = BackHandler.addEventListener(
+              "hardwareBackPress",
+              backAction
+          );
+  
+          // Не забываем удалять слушатель при размонтировании компонента
+          return () => backHandler.remove();
+      }, [selectedProduct, logic.activeFolderId]); // Важно: следим за этими стейтами
+
+
+
   // Макет для FlatList
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ITEM_HEIGHT,
@@ -130,21 +164,6 @@ export const CatalogScreen = memo(({ products, categories, cart, onUpdateCart, e
       <View className="px-4 pt-2 border-b border-gray-100 pb-2">
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-2xl font-[900] text-gray-900">Каталог</Text>
-          <View className="flex-row items-center">
-            <TouchableOpacity onPress={startSyncImg} disabled={loading} className="bg-blue-600 px-4 py-2 rounded-full mr-2">
-              <Text className='text-white font-[900] text-[12px]'>
-                {loading ? `${progress.current}/${progress.total}` : "Sync Img"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSync} disabled={isSyncing} className="bg-blue-600 px-4 py-2 rounded-full flex-row items-center">
-              {isSyncing ? <ActivityIndicator size="small" color="white" /> : (
-                <>
-                  <RefreshCw size={14} color="white" />
-                  <Text className="text-white font-bold ml-2 text-[12px]">Данные</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* ПОИСК */}
