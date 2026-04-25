@@ -267,7 +267,7 @@ export default function MainApp() {
                                 {isDetailOpen && selectedClient ? (
                                     <ClientDetailScreen
                                         client={selectedClient}
-                                        onBack={() => { setIsDetailOpen(false); setSelectedClient(null)}}
+                                        onBack={() => { setIsDetailOpen(false); setSelectedClient(null) }}
                                         // ПРОБРАСЫВАЕМ ФУНКЦИЮ ОТКРЫТИЯ ДЕТАЛЕЙ
                                         onSelectOrder={(doc: any, type: string) => handleOpenOrderDetails(doc, type)}
                                         BASE_URL={BASE_URL}

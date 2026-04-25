@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyb
 import * as SecureStore from 'expo-secure-store';
 import { Key, ChevronRight, AlertCircle } from 'lucide-react-native';
 import { BASE_URL } from '../services/syncService';
+import * as Linking from 'expo-linking';
 
 interface AuthScreenProps {
     onSuccess: () => void; // Вызывается, когда ключ проверен и сохранен
@@ -57,7 +58,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             setIsLoading(false); // Обязательно выключаем индикатор
         }
     };
-
+    const openWebsite = async (url: string) => {
+        // Проверяем, может ли устройство открыть этот URL
+        await Linking.openURL(url);
+    }
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -71,6 +75,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                 <Text className="text-slate-500 mt-2 text-center">
                     Введите ваш API ключ для синхронизации данных
                 </Text>
+                <TouchableOpacity
+                    onPress={() => openWebsite('https://online.moysklad.ru/app/#token')}
+                    activeOpacity={0.7}
+                >
+                    <Text style={{
+                        color: '#2563eb',
+                        textDecorationLine: 'underline',
+                        fontSize: 12
+                    }}>
+                        Создайте токен в настройках Мой Склад
+                    </Text>
+                </TouchableOpacity>
             </View>
 
             <View>
