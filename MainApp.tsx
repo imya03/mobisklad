@@ -66,7 +66,7 @@ export default function MainApp() {
             setCategories(catRows as Category[]);
             setClients(clientRows as Client[]);
 
-            console.log(`✅ Данные обновлены в App: ${prodRows.length} товаров`);
+            console.log(`✅ Данные обновлены в Appp: ${prodRows.length} товаров`);
         } catch (e) {
             console.error("Ошибка загрузки из БД:", e);
         }
