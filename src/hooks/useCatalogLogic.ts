@@ -71,11 +71,26 @@ export const useCatalogLogic = (
 
     // Типизируем результаты поиска
     const searchResults = useMemo((): Product[] => {
-        if (debouncedQuery.length < 2) return [];
-        return products.filter((p: Product) =>
-            p.name.toLowerCase().includes(debouncedQuery) ||
-            (p.article && String(p.article).toLowerCase().includes(debouncedQuery))
-        ).slice(0, 40);
+        const query = debouncedQuery.trim().toLowerCase();
+        if (query.length < 2) return [];
+
+        const searchWords = query.split(/\s+/);
+
+        return products
+            .filter((p) => {
+                const target = `${p.name} ${p.article || ''}`.toLowerCase();
+                return searchWords.every(word => target.includes(word));
+            })
+            .sort((a, b) => {
+                // Если запрос целиком есть в названии (точный порядок), поднимаем выше
+                const aFullMatch = a.name.toLowerCase().includes(query);
+                const bFullMatch = b.name.toLowerCase().includes(query);
+
+                if (aFullMatch && !bFullMatch) return -1;
+                if (!aFullMatch && bFullMatch) return 1;
+                return 0;
+            })
+            .slice(0, 50);
     }, [debouncedQuery, products]);
 
 

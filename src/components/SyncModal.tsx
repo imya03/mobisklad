@@ -41,7 +41,9 @@ export const SyncModal = ({ visible, onClose, onRefreshData }: any) => {
             await syncClients();
             await syncChangesOnly((p) => addLog(`${p.step} ${p.count}`));
             addLog("✅ Данные обновлены!");
-            if (onRefreshData) await onRefreshData();
+            if (typeof onRefreshData === 'function') {
+                await onRefreshData();
+            }
         } catch (e: any) {
             addLog(`❌ Ошибка данных: ${e.message}`);
         } finally {
@@ -54,14 +56,16 @@ export const SyncModal = ({ visible, onClose, onRefreshData }: any) => {
 
         abortControllerRef.current = new AbortController();
         setSyncType('images');
-        addLog("🖼️ Загрузка фото (можно отменить)");
+        addLog("🖼️ Загрузка фото (можно остановить)");
 
         try {
             await syncAllImagesOneByOne((curr, tot, msg) => {
                 addLog(`[${curr}/${tot}] ${msg}`);
             }, abortControllerRef.current.signal);
             addLog("Загрузка остановлена!");
-            if (onRefreshData) await onRefreshData();
+            if (typeof onRefreshData === 'function') {
+                await onRefreshData();
+            }
         } catch (e: any) {
             addLog(abortControllerRef.current.signal.aborted ? "🛑 Загрузка фото прервана" : `❌ Ошибка: ${e.message}`);
         } finally {

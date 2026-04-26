@@ -9,7 +9,7 @@ import {
     Users,
     LayoutGrid,
     ShoppingCart,
-    CloudSync,
+    Settings,
 } from 'lucide-react-native';
 import { BackHandler } from 'react-native';
 // Экраны
@@ -19,7 +19,7 @@ import { CartScreen } from './src/screens/CartScreen';
 import { ClientDetailScreen } from './src/screens/ClientDetailScreen';
 // Компоненты
 import { NavBtn } from './src/components/NavBtn';
-import { SyncModal } from './src/components/SyncModal';
+import { SettingsScreen } from './src/screens/Settings';
 // Типы
 import { Client, Product, Category, OrderDetails } from './src/types/index';
 
@@ -33,7 +33,6 @@ import {
     getConfig,
     BASE_URL,
     createOrderInMoySklad
-    // syncWithMoySklad больше не нужен, если используем новые функции внутри компонентов
 } from './src/services/syncService';
 
 
@@ -54,7 +53,6 @@ export default function MainApp() {
     const loadDataFromDb = useCallback(async () => {
         try {
             const db = await dbPromise;
-
             // Загружаем всё параллельно для скорости
             const [prodRows, catRows, clientRows] = await Promise.all([
                 db.getAllAsync('SELECT * FROM products'),
@@ -107,7 +105,6 @@ export default function MainApp() {
                 return true;
             }
 
-
             // Если мы и так на главном экране (clients), возвращаем false.
             // Приложение закроется как обычно.
             return false;
@@ -134,7 +131,6 @@ export default function MainApp() {
                 delete newCart[productId];
                 return newCart;
             }
-
             // В противном случае просто записываем новое число (заменяя старое)
             return {
                 ...prev,
@@ -289,7 +285,6 @@ export default function MainApp() {
                             <CatalogScreen
                                 products={products}
                                 categories={categories}
-                                refreshData={loadDataFromDb}
                                 cart={cart}
                                 onUpdateCart={updateCart}
                                 expandedFolders={expandedFolders}
@@ -309,13 +304,7 @@ export default function MainApp() {
                         )}
 
                         {activeTab === 'settings' && (
-                            <View className="flex-1 justify-center items-center">
-                                <SyncModal
-                                    visible={isSyncModalVisible}
-                                    setVisible={setIsSyncModalVisible}
-                                    onClose={() => setIsSyncModalVisible(false)}
-                                />
-                            </View>
+                            <SettingsScreen onDataUpdate={loadDataFromDb}/>
                         )}
                     </>
                 )}
@@ -344,7 +333,7 @@ export default function MainApp() {
                     />
                     <NavBtn
                         active={activeTab === 'orders'}
-                        icon={<CloudSync size={22} color={activeTab === 'orders' ? "#2563eb" : "#9ca3af"} />}
+                        icon={<Settings size={22} color={activeTab === 'orders' ? "#2563eb" : "#9ca3af"} />}
                         label="Синхронизация"
                         onPress={() => { setActiveTab('settings'); setIsSyncModalVisible(true) }}
 

@@ -93,7 +93,6 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     console.log(`🚀 Ускоренная синхронизация. Метка: ${lastSync || 'Полная'}`);
 
     // --- 1. ОСТАТКИ (ПАРАЛЛЕЛЬНО) ---
-    if (onProgress) onProgress({ step: 'Загрузка остатков...', count: 0 });
     const allStocks = new Map<string, number>();
     const config = await getConfig();
     const stockInit = await axios.get(`${BASE_URL}/report/stock/all?limit=1`, { headers: config.headers });
@@ -105,6 +104,12 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
         if (id) allStocks.set(id, s.stock);
       });
     });
+    if (onProgress) {
+      onProgress({
+        step: 'Остатки загружены',
+        count: allStocks.size
+      });
+    }
 
     // Быстрое обновление остатков в БД
     await db.withTransactionAsync(async () => {
@@ -160,7 +165,6 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
       await db.withTransactionAsync(async () => {
         for (const p of rows) {
           remoteProductIds.add(p.id);
-          if (p.updated > maxUpdatedInResponse) maxUpdatedInResponse = p.updated;
 
           const catId = p.productFolder?.meta?.href.split('/').pop() || null;
           const price = p.salePrices?.[0]?.value ? p.salePrices[0].value / 100 : 0;
@@ -213,15 +217,18 @@ export const syncChangesOnly = async (onProgress?: (p: SyncProgress) => void) =>
     }
 
     // --- 5. ОБНОВЛЕНИЕ МЕТКИ ---
-    if (maxUpdatedInResponse && maxUpdatedInResponse !== lastSync) {
-      const date = new Date(maxUpdatedInResponse.replace(' ', 'T') + 'Z');
-      date.setMilliseconds(date.getMilliseconds() + 1);
-      const nextSync = date.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23);
-      await AsyncStorage.setItem(LAST_SYNC_KEY, nextSync);
-    }
+    const now = new Date();
+    const mskOffset = 3 * 60 * 60 * 1000; // 3 часа в миллисекундах
+    const mskDate = new Date(now.getTime() + mskOffset);
 
-    if (onProgress) onProgress({ step: 'Завершено!', count: updatedCount });
-    return true;
+    // Форматируем в строку: YYYY-MM-DD HH:mm:ss.SSS
+    const nextSync = mskDate.toISOString()
+      .replace('T', ' ')
+      .replace('Z', '')
+      .slice(0, 23);
+
+    console.log(`✅ Синхронизация завершена. Новая метка (МСК): ${nextSync}`);
+    await AsyncStorage.setItem(LAST_SYNC_KEY, nextSync);
   } catch (e: any) {
     console.error('🔴 Sync Error:', e.message);
     return false;
